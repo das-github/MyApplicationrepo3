@@ -1,3 +1,5 @@
+properties([pipelineTriggers([githubPush()])])
+
 pipeline {
     agent any
 
@@ -14,6 +16,17 @@ pipeline {
                 sh 'mvn clean install -f MyWebApp/pom.xml'
             }
         }
+        stage('Test') {
+            steps {
+                echo 'JUnit Test'
+                  sh 'mvn -Dmaven.test.failure.ignore=true install' 
+            }
+            post {
+                success {
+                    junit 'target/surefire-reports/**/*.xml' 
+                }
+            }
+        }
         stage('Code Quality') {
             steps {
                 echo 'SonarQube'
@@ -21,6 +34,13 @@ pipeline {
                 sh 'mvn -f MyWebApp/pom.xml sonar:sonar'
                 }
             }
+        }
+        stage("Quality Gate") {
+            steps {
+              timeout(time: 1, unit: 'HOURS') {
+                waitForQualityGate abortPipeline: true
+              }
+           }
         }
         stage('Artifact Upload') {
             steps {
@@ -34,6 +54,23 @@ pipeline {
                 sshagent(['deploy_user']) {
                     sh 'scp /var/lib/jenkins/workspace/mywebapp/MyWebApp/target/MyWebApp.war http://192.168.0.85:8080:/opt/tomcat/apache-tomcat-9.0.43/webapps/'
                 }
+            }
+        }
+        post {
+        success {
+          // publish html
+        publishHTML (target : [allowMissing: false,
+         alwaysLinkToLastBuild: true,
+         keepAll: true,
+         reportDir: 'reports',
+         reportFiles: 'myreport.html',
+         reportName: 'My Reports',
+         reportTitles: 'The Report'])
+        }
+      }
+     post {
+        always {
+            echo "Send notifications for result: ${currentBuild.result}"
             }
         }
     }
